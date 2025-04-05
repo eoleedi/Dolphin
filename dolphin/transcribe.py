@@ -126,9 +126,24 @@ def load_model(
         model_dir = Path(model_dir)
 
     model_file = model_dir / f"{model_name}.pt"
-    if not model_file.exists():
-        logger.error(f"model {model_name} not found.")
-        raise Exception(f"model {model_name} not found, please download the model first.")
+    download_model = True
+    if model_file.exists():
+        with open(model_file, "rb") as f:
+            model_bytes = f.read()
+        if hashlib.sha256(model_bytes).hexdigest() == MODELS[model_name]["sha256"]:
+            download_model = False
+        else:
+            model_file.unlink(missing_ok=True)
+            logger.warning("model SHA256 chechsum mismatch, redownload model...")
+
+    if download_model:
+        # Download model
+        model_dir.mkdir(exist_ok=True)
+        _download_from_modelscope(
+            model_id=MODELS[model_name]["model_id"],
+            local_dir=model_dir,
+            allow_file_pattern=f"{model_name}.pt",
+        )
 
     model = DolphinSpeech2Text(
         s2t_train_config=train_cfg,
@@ -168,25 +183,6 @@ def transcribe(args: Namespace) -> TranscribeResult:
     model_dir: Path = args.model_dir
     model_dir = model_dir if model_dir else os.path.expanduser("~/.cache/dolphin")
     model_dir = Path(model_dir)
-    model_path = model_dir / f"{model_name}.pt"
-    download_model = True
-    if model_path.exists():
-        with open(model_path, "rb") as f:
-            model_bytes = f.read()
-        if hashlib.sha256(model_bytes).hexdigest() == MODELS[model_name]["sha256"]:
-            download_model = False
-        else:
-            model_path.unlink(missing_ok=True)
-            logger.warning("model SHA256 chechsum mismatch, redownload model...")
-
-    if download_model:
-        # Download model
-        model_dir.mkdir(exist_ok=True)
-        _download_from_modelscope(
-            model_id=MODELS[model_name]["model_id"],
-            local_dir=model_dir,
-            allow_file_pattern=f"{model_name}.pt",
-        )
 
     logger.info("loading model...")
     model_kwargs = {
