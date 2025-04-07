@@ -18,7 +18,7 @@ import modelscope
 
 from .audio import load_audio
 from .model import DolphinSpeech2Text, TranscribeResult
-from .languages import LANGUAGE_REGION_CODES
+from .languages import LANGUAGE_REGION_CODES, LANGUAGE_CODES
 
 logger = logging.getLogger("dolphin")
 
@@ -202,6 +202,12 @@ def transcribe(args: Namespace) -> TranscribeResult:
 
         lang_sym = args.lang_sym
         region_sym = args.region_sym
+    elif args.lang_sym and args.region_sym is None:
+        if f"{args.lang_sym}" not in LANGUAGE_CODES:
+            raise Exception("Unsupport language!")
+        
+        lang_sym = args.lang_sym # support only language symbol
+        region_sym = None
     else:
         lang_sym = None
         region_sym = None
