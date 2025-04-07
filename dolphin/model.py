@@ -223,7 +223,7 @@ class DolphinSpeech2Text(Speech2Text):
 
         return model, args
 
-    def detect_language(self, speech: torch.Tensor, **kwargs) -> Tuple[int, int]:
+    def detect_language(self, speech: torch.Tensor, lang_sym: str = None, **kwargs) -> Tuple[int, int]:
         """
         Detect language and region.
 
@@ -265,12 +265,17 @@ class DolphinSpeech2Text(Speech2Text):
 
         decoder = self.s2t_model.decoder
         # detect language
-        ys = torch.tensor([self.s2t_model.sos], dtype=torch.long, device=self.device).unsqueeze(0)
-        logp, _ = decoder.batch_score(ys, [None], enc)
-        mask = torch.ones(logp.size(1), dtype=torch.bool)
-        mask[lang_first_id:lang_last_id+1] = False
-        logp[0, mask] = -np.inf
-        lang_id = logp.argmax(dim=-1).tolist()[0]
+        lang_id = None
+        if lang_sym is None:
+            ys = torch.tensor([self.s2t_model.sos], dtype=torch.long, device=self.device).unsqueeze(0)
+            logp, _ = decoder.batch_score(ys, [None], enc)
+            mask = torch.ones(logp.size(1), dtype=torch.bool)
+            mask[lang_first_id:lang_last_id+1] = False
+            logp[0, mask] = -np.inf
+            lang_id = logp.argmax(dim=-1).tolist()[0]
+        else:
+            logger.info(f"lang symbol is given: {lang_sym}")
+            lang_id = self.converter.token2id[f"<{lang_sym}>"]
 
         # detect region
         ys = torch.tensor([self.s2t_model.sos, lang_id], dtype=torch.long, device=self.device).unsqueeze(0)
@@ -319,7 +324,7 @@ class DolphinSpeech2Text(Speech2Text):
             lang_id = self.converter.token2id[f"<{lang_sym}>"]
             region_id = self.converter.token2id[f"<{region_sym}>"]
         else:
-            lang_id, region_id = self.detect_language(speech)
+            lang_id, region_id = self.detect_language(speech, lang_sym)
 
         task_id = self.converter.token2id["<asr>"]
         notime_id = self.converter.token2id[NOTIME_SYMBOL]
