@@ -23,7 +23,8 @@ from espnet.nets.scorer_interface import BatchScorerInterface
 from espnet.nets.scorers.length_bonus import LengthBonus
 from espnet2.text.build_tokenizer import build_tokenizer
 from espnet2.text.token_id_converter import TokenIDConverter
-from espnet2.bin.s2t_inference import (Speech2Text, ListOfHypothesis, ScoreFilter)
+from espnet2.bin.s2t_inference import Speech2Text, ListOfHypothesis
+from dolphin.dolphin_scorefilter import DolphinScoreFilter
 
 from .constants import (SPEECH_LENGTH, SAMPLE_RATE, FIRST_TIME_SYMBOL, LAST_TIME_SYMBOL, NOTIME_SYMBOL,
                         FIRST_LANG_SYMBOL, LAST_LANG_SYMBOL, FIRST_REGION_SYMBOL, LAST_REGION_SYMBOL)
@@ -86,7 +87,7 @@ class DolphinSpeech2Text(Speech2Text):
         scorers = dict(
             decoder=decoder,
             length_bonus=LengthBonus(len(token_list)),
-            scorefilter=ScoreFilter(
+            scorefilter=DolphinScoreFilter(
                 notimestamps=token_list.index(NOTIME_SYMBOL),
                 first_time=token_list.index(FIRST_TIME_SYMBOL),
                 last_time=token_list.index(LAST_TIME_SYMBOL),
@@ -328,13 +329,10 @@ class DolphinSpeech2Text(Speech2Text):
 
         task_id = self.converter.token2id["<asr>"]
         notime_id = self.converter.token2id[NOTIME_SYMBOL]
-        first_time_id = self.converter.token2id[FIRST_TIME_SYMBOL]
 
         # Prepare hyp_primer
         hyp_primer = [self.s2t_model.sos, lang_id, region_id, task_id]
-        if predict_time:
-            hyp_primer.append(first_time_id)
-        else:
+        if not predict_time:
             hyp_primer.append(notime_id)
 
         self.beam_search.set_hyp_primer(hyp_primer)
