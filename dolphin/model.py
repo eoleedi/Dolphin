@@ -18,13 +18,13 @@ from espnet2.tasks.s2t import S2TTask
 from espnet2.torch_utils.device_funcs import to_device
 from espnet.nets.batch_beam_search import BatchBeamSearch
 from espnet2.train.abs_espnet_model import AbsESPnetModel
-from espnet.nets.beam_search import BeamSearch, Hypothesis
 from espnet.nets.scorer_interface import BatchScorerInterface
 from espnet.nets.scorers.length_bonus import LengthBonus
 from espnet2.text.build_tokenizer import build_tokenizer
 from espnet2.text.token_id_converter import TokenIDConverter
 from espnet2.bin.s2t_inference import Speech2Text, ListOfHypothesis
 from dolphin.scorefilter import DolphinScoreFilter
+from dolphin.beam_search import SimpleBeamSearch
 
 from .constants import (SPEECH_LENGTH, SAMPLE_RATE, FIRST_TIME_SYMBOL, LAST_TIME_SYMBOL, NOTIME_SYMBOL,
                         FIRST_LANG_SYMBOL, LAST_LANG_SYMBOL, FIRST_REGION_SYMBOL, LAST_REGION_SYMBOL)
@@ -128,7 +128,7 @@ class DolphinSpeech2Text(Speech2Text):
             scorefilter=1.0,
         )
 
-        beam_search = BeamSearch(
+        beam_search = SimpleBeamSearch(
             beam_size=beam_size,
             weights=weights,
             scorers=scorers,
