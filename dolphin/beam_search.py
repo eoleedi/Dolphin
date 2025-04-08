@@ -1,6 +1,7 @@
 import torch
 from typing import Any, Dict, List, NamedTuple, Tuple, Union
 from espnet.nets.beam_search import BeamSearch, Hypothesis
+from espnet.nets.batch_beam_search import BatchBeamSearch
 from espnet.nets.e2e_asr_common import end_detect
 
 import logging
@@ -8,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class SimpleBeamSearch(BeamSearch):
+class SimpleBeamSearch(BatchBeamSearch):
     """Simple beam search decoder.
     Just when the hyps equals to beam size, it will stop decoding."""
         

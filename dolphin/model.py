@@ -25,6 +25,7 @@ from espnet2.text.token_id_converter import TokenIDConverter
 from espnet2.bin.s2t_inference import Speech2Text, ListOfHypothesis
 from dolphin.scorefilter import DolphinScoreFilter
 from dolphin.beam_search import SimpleBeamSearch
+from espnet.nets.beam_search import BeamSearch, Hypothesis
 
 from .constants import (SPEECH_LENGTH, SAMPLE_RATE, FIRST_TIME_SYMBOL, LAST_TIME_SYMBOL, NOTIME_SYMBOL,
                         FIRST_LANG_SYMBOL, LAST_LANG_SYMBOL, FIRST_REGION_SYMBOL, LAST_REGION_SYMBOL)
@@ -69,6 +70,7 @@ class DolphinSpeech2Text(Speech2Text):
         quantize_dtype: str = "qint8",
         task_sym: str = "<asr>",
         predict_time: bool = True,
+        beam_search_type: str = "raw"
     ):
 
         qconfig_spec = set([getattr(torch.nn, q) for q in quantize_modules])
@@ -127,8 +129,12 @@ class DolphinSpeech2Text(Speech2Text):
             length_bonus=penalty,
             scorefilter=1.0,
         )
-
-        beam_search = SimpleBeamSearch(
+        if beam_search_type == "raw":
+            beam_search_class = BeamSearch
+        elif beam_search_type == "simple":
+            beam_search_class = SimpleBeamSearch
+            
+        beam_search = beam_search_class(
             beam_size=beam_size,
             weights=weights,
             scorers=scorers,
@@ -147,8 +153,11 @@ class DolphinSpeech2Text(Speech2Text):
                 if not isinstance(v, BatchScorerInterface)
             ]
             if len(non_batch) == 0:
-                beam_search.__class__ = BatchBeamSearch
-                # logger.info("BatchBeamSearch implementation is selected.")
+                if beam_search_type == "simple":
+                    beam_search.__class__ = SimpleBeamSearch
+                else:
+                    beam_search.__class__ = BatchBeamSearch
+                logger.info("BatchBeamSearch implementation is selected.")
             else:
                 logger.warning(
                     f"As non-batch scorers {non_batch} are found, "
