@@ -69,8 +69,7 @@ class DolphinSpeech2Text(Speech2Text):
         quantize_modules: List[str] = ["Linear"],
         quantize_dtype: str = "qint8",
         task_sym: str = "<asr>",
-        predict_time: bool = True,
-        beam_search_type: str = "raw"
+        predict_time: bool = True
     ):
 
         qconfig_spec = set([getattr(torch.nn, q) for q in quantize_modules])
@@ -129,12 +128,8 @@ class DolphinSpeech2Text(Speech2Text):
             length_bonus=penalty,
             scorefilter=1.0,
         )
-        if beam_search_type == "raw":
-            beam_search_class = BeamSearch
-        elif beam_search_type == "simple":
-            beam_search_class = SimpleBeamSearch
             
-        beam_search = beam_search_class(
+        beam_search = SimpleBeamSearch(
             beam_size=beam_size,
             weights=weights,
             scorers=scorers,
@@ -153,10 +148,7 @@ class DolphinSpeech2Text(Speech2Text):
                 if not isinstance(v, BatchScorerInterface)
             ]
             if len(non_batch) == 0:
-                if beam_search_type == "simple":
-                    beam_search.__class__ = SimpleBeamSearch
-                else:
-                    beam_search.__class__ = BatchBeamSearch
+                beam_search.__class__ = SimpleBeamSearch
                 logger.info("BatchBeamSearch implementation is selected.")
             else:
                 logger.warning(
