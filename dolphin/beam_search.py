@@ -72,7 +72,7 @@ class SimpleBeamSearch(BatchBeamSearch):
                 i, maxlen, minlen, maxlenratio, best, ended_hyps
             )
             # simple beam search stop condition
-            if len(ended_hyps) > self.beam_size:
+            if len(ended_hyps) >= self.beam_size:
                 logger.info(f"end detected for beam sizs: {self.beam_size}")
                 break 
             # end detection
