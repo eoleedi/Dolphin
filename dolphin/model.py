@@ -301,7 +301,7 @@ class DolphinSpeech2Text(Speech2Text):
         lang_sym: Optional[str] = None,
         region_sym: Optional[str] = None,
         predict_time: Optional[bool] = None,
-        padding_speech: bool = True,
+        padding_speech: bool = False,
     ) -> TranscribeResult:
         """Inference for a single utterance.
 

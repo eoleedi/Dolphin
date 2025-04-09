@@ -40,7 +40,7 @@ class SimpleBeamSearch(BatchBeamSearch):
             list[Hypothesis]: N-best decoding results
 
         """
-        logger.info("Simple beam search decoding...")
+        logger.debug("Simple beam search decoding...")
         # set length bounds
         if pre_x is not None:
             inp = pre_x
@@ -57,9 +57,9 @@ class SimpleBeamSearch(BatchBeamSearch):
             minlen = -1 * int(minlenratio)
         else:
             minlen = int(minlenratio * inp.size(0))
-        logger.info("decoder input length: " + str(inp.shape[0]))
-        logger.info("max output length: " + str(maxlen))
-        logger.info("min output length: " + str(minlen))
+        logger.debug("decoder input length: " + str(inp.shape[0]))
+        logger.debug("max output length: " + str(maxlen))
+        logger.debug("min output length: " + str(minlen))
 
         # main loop of prefix search
         running_hyps = self.init_hyp(x if pre_x is None else pre_x)
@@ -73,14 +73,14 @@ class SimpleBeamSearch(BatchBeamSearch):
             )
             # simple beam search stop condition
             if len(ended_hyps) >= self.beam_size:
-                logger.info(f"end detected for beam sizs: {self.beam_size}")
+                logger.debug(f"end detected for beam sizs: {self.beam_size}")
                 break 
             # end detection
             if maxlenratio == 0.0 and end_detect([h.asdict() for h in ended_hyps], i):
-                logger.info(f"end detected at {i}")
+                logger.debug(f"end detected at {i}")
                 break
             if len(running_hyps) == 0:
-                logger.info("no hypothesis. Finish decoding.")
+                logger.debug("no hypothesis. Finish decoding.")
                 break
             else:
                 logger.debug(f"remained hypotheses: {len(running_hyps)}")
@@ -109,14 +109,14 @@ class SimpleBeamSearch(BatchBeamSearch):
         # report the best result
         best = nbest_hyps[0]
         for k, v in best.scores.items():
-            logger.info(
+            logger.debug(
                 f"{v:6.2f} * {self.weights[k]:3} = {v * self.weights[k]:6.2f} for {k}"
             )
-        logger.info(f"total log probability: {best.score:.2f}")
-        logger.info(f"normalized log probability: {best.score / len(best.yseq):.2f}")
-        logger.info(f"total number of ended hypotheses: {len(nbest_hyps)}")
+        logger.debug(f"total log probability: {best.score:.2f}")
+        logger.debug(f"normalized log probability: {best.score / len(best.yseq):.2f}")
+        logger.debug(f"total number of ended hypotheses: {len(nbest_hyps)}")
         if self.token_list is not None:
-            logger.info(
+            logger.debug(
                 "best hypo: "
                 + "".join([self.token_list[x] for x in best.yseq[1:-1]])
                 + "\n"
