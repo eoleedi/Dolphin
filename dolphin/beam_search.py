@@ -6,7 +6,7 @@ from espnet.nets.e2e_asr_common import end_detect
 
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("dolphin")
 
 
 class SimpleBeamSearch(BatchBeamSearch):
