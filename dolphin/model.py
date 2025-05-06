@@ -1,6 +1,7 @@
 # encoding: utf8
 
 import os
+import time
 import yaml
 import logging
 import dataclasses
@@ -40,6 +41,7 @@ class TranscribeResult:
     text_nospecial: str
     language: str
     region: str
+    rtf: float
 
 
 class DolphinSpeech2Text(Speech2Text):
@@ -225,7 +227,7 @@ class DolphinSpeech2Text(Speech2Text):
 
         return model, args
 
-    def detect_language(self, speech: torch.Tensor, lang_sym: str = None, **kwargs) -> Tuple[int, int]:
+    def detect_language(self, speech: torch.Tensor, lang_sym: str = None, with_enc_output: bool = False, **kwargs) -> Tuple[int, int]:
         """
         Detect language and region.
 
@@ -291,7 +293,11 @@ class DolphinSpeech2Text(Speech2Text):
         region_symbol = self.converter.ids2tokens([region_id])[0]
 
         logger.info(f"detect language: {lang_symbol}, region: {region_symbol}")
-        return lang_id, region_id
+
+        if with_enc_output:
+            return lang_id, region_id, enc
+        else:
+            return lang_id, region_id, None
 
     @torch.no_grad()
     @typechecked
@@ -322,11 +328,14 @@ class DolphinSpeech2Text(Speech2Text):
 
         predict_time = predict_time if predict_time is not None else self.predict_time
 
+        start_tm = time.monotonic()
+        enc = None
         if all([lang_sym, region_sym]):
             lang_id = self.converter.token2id[f"<{lang_sym}>"]
             region_id = self.converter.token2id[f"<{region_sym}>"]
         else:
-            lang_id, region_id = self.detect_language(speech, lang_sym)
+
+            lang_id, region_id, enc = self.detect_language(speech, lang_sym, with_enc_output=True)
 
         task_id = self.converter.token2id["<asr>"]
         notime_id = self.converter.token2id[NOTIME_SYMBOL]
@@ -347,6 +356,7 @@ class DolphinSpeech2Text(Speech2Text):
             assert (speech.dim() == 2 and speech.size(1) == 1), f"speech of size {speech.size()} is not supported"
             speech = speech.squeeze(1)  # (nsamples, 1) --> (nsamples,)
 
+        nsamples = speech.size(-1)
         speech_length = int(SAMPLE_RATE * SPEECH_LENGTH)
         # Pad or trim speech to the fixed length
         if speech.size(-1) >= speech_length:
@@ -366,16 +376,22 @@ class DolphinSpeech2Text(Speech2Text):
         batch = to_device(batch, device=self.device)
 
         # b. Forward Encoder
-        enc, enc_olens = self.s2t_model.encode(**batch)
+        if enc is None:
+            enc, enc_olens = self.s2t_model.encode(**batch)
         if isinstance(enc, tuple):
             enc, _ = enc
+        encode_tm = time.monotonic()
+        logger.info(f"encode time: {round(encode_tm - start_tm, 2)} seconds")
 
         assert len(enc) == 1, len(enc)
 
         # c. Pass the encoder result to the beam search
         results = self._decode_single_sample(enc[0])
         text, _, _, text_nospecial, _ = results[0]
+        decode_tm = time.monotonic()
+        logger.info(f"decode time: {round(decode_tm - encode_tm, 2)} senconds")
+        rtf = round((decode_tm - start_tm) / (nsamples / SAMPLE_RATE), 2)
 
         lang, region = self.converter.ids2tokens([lang_id, region_id])
-        ret = TranscribeResult(text, text_nospecial, lang[1:-1], region[1:-1])
+        ret = TranscribeResult(text, text_nospecial, lang[1:-1], region[1:-1], rtf=rtf)
         return ret
