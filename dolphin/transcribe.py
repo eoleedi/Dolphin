@@ -220,11 +220,14 @@ def transcribe(args: Namespace) -> TranscribeResult:
         padding_speech=args.padding_speech
     )
 
-    logger.info(f"decode result, language: {result.language}, region: {result.region}, text: {result.text}")
+    logger.info(f"decode result, rtf: {result.rtf}, language: {result.language}, region: {result.region}, text: {result.text}")
     return result
 
 
 def cli():
+    import warnings
+    warnings.filterwarnings("ignore", category=FutureWarning)
+
     LOGGING_FORMAT="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
     logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
 
