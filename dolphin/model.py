@@ -278,7 +278,7 @@ class DolphinSpeech2Text(Speech2Text):
             logp[0, mask] = -np.inf
             lang_id = logp.argmax(dim=-1).tolist()[0]
         else:
-            logger.info(f"lang symbol is given: {lang_sym}")
+            logger.debug(f"lang symbol is given: {lang_sym}")
             lang_id = self.converter.token2id[f"<{lang_sym}>"]
 
         # detect region
@@ -292,7 +292,7 @@ class DolphinSpeech2Text(Speech2Text):
         lang_symbol = self.converter.ids2tokens([lang_id])[0]
         region_symbol = self.converter.ids2tokens([region_id])[0]
 
-        logger.info(f"detect language: {lang_symbol}, region: {region_symbol}")
+        logger.debug(f"detect language: {lang_symbol}, region: {region_symbol}")
 
         if with_enc_output:
             return lang_id, region_id, enc
@@ -370,7 +370,7 @@ class DolphinSpeech2Text(Speech2Text):
         # lengths: (1,)
         lengths = speech.new_full([1], dtype=torch.long, fill_value=speech.size(1))
         batch = {"speech": speech, "speech_lengths": lengths}
-        logger.info("speech length: " + str(speech.size(1)))
+        logger.debug("speech length: " + str(speech.size(1)))
 
         # a. To device
         batch = to_device(batch, device=self.device)
@@ -381,7 +381,7 @@ class DolphinSpeech2Text(Speech2Text):
         if isinstance(enc, tuple):
             enc, _ = enc
         encode_tm = time.monotonic()
-        logger.info(f"encode time: {round(encode_tm - start_tm, 2)} seconds")
+        logger.debug(f"encode time: {round(encode_tm - start_tm, 2)} seconds")
 
         assert len(enc) == 1, len(enc)
 
@@ -389,7 +389,7 @@ class DolphinSpeech2Text(Speech2Text):
         results = self._decode_single_sample(enc[0])
         text, _, _, text_nospecial, _ = results[0]
         decode_tm = time.monotonic()
-        logger.info(f"decode time: {round(decode_tm - encode_tm, 2)} senconds")
+        logger.debug(f"decode time: {round(decode_tm - encode_tm, 2)} senconds")
         rtf = round((decode_tm - start_tm) / (nsamples / SAMPLE_RATE), 2)
 
         lang, region = self.converter.ids2tokens([lang_id, region_id])
