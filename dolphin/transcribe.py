@@ -324,14 +324,6 @@ def transcribe(
 
 
 def cli():
-    import warnings
-    warnings.filterwarnings("ignore", category=FutureWarning)
-
-    # filter framework interanl logs
-    logging.getLogger("espnet").setLevel(logging.ERROR)
-    logging.getLogger("root").setLevel(logging.ERROR)
-    logging.getLogger("dolphin").setLevel(logging.INFO)
-
     args = parser_args()
 
     model = args.model
