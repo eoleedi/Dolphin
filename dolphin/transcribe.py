@@ -1,8 +1,15 @@
 # encoding: utf8
 
 import logging
+import warnings
+
 LOGGING_FORMAT="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
+warnings.filterwarnings("ignore", category=FutureWarning)
+# filter framework interanl logs
+logging.getLogger("espnet").setLevel(logging.ERROR)
+logging.getLogger("root").setLevel(logging.ERROR)
+logging.getLogger("dolphin").setLevel(logging.INFO)
 
 import yaml
 import tqdm
@@ -11,6 +18,7 @@ import logging
 import hashlib
 import os.path
 import argparse
+import dataclasses
 import numpy as np
 from pathlib import Path
 from argparse import Namespace
@@ -23,7 +31,7 @@ import modelscope
 from modelscope.models.audio.funasr.model import GenericFunASR
 
 from .audio import load_audio, convert_audio
-from .model import DolphinSpeech2Text, TranscribeResult
+from .model import DolphinSpeech2Text, TranscribeResult, TranscribeSegmentResult
 from .languages import LANGUAGE_REGION_CODES, LANGUAGE_CODES
 from .constants import SPEECH_LENGTH
 
@@ -204,39 +212,31 @@ def validate_lang_region(lang_sym: str, region_sym: str):
 
 
 def transcribe_long(
+        model: DolphinSpeech2Text,
         audio: str,
-        device: str,
-        model: str,
-        model_dir: str,
-        lang_sym: str,
-        region_sym: str,
+        lang_sym: str = None,
+        region_sym: str = None,
+        predict_time: bool = True,
+        padding_speech: bool = False,
         **kwargs,
-    ) -> List[TranscribeResult]:
+    ) -> List[TranscribeSegmentResult]:
     """
     Transcribe audio to text.
 
     Args:
+        model: model instance
         audio: audio path
-        device: inference device, (e.g. cpu, cuda, mps)
-        model: model name (e.g. small)
-        model_dir: model download directory
         lang_sym: language symbol (e.g. zh)
         region_sym: regiion symbol (e.g. CN)
+        predict_time: whether predict timestamp (default: true)
+        padding_speech: whether padding speech to 30 seconds (default: false)
 
     Returns:
-        List[TranscribeResult]
+        List[TranscribeSegmentResult]
     """
-    if model not in MODELS:
-        logging.error(f"Unknown model {model}, Dolphin open source base, small model, please config the correct model.")
-        return
+    results = []
 
     validate_lang_region(lang_sym, region_sym)
-
-    model_dir = model_dir if model_dir else os.path.expanduser("~/.cache/dolphin")
-    model_dir = Path(model_dir)
-
-    tmp_audio = f"{audio}.wav"
-    convert_audio(audio, tmp_audio)
 
     logging.info("download vad model")
     vad_model_dir = Path(os.path.expanduser("~/.cache/dolphin/speech_fsmn_vad"))
@@ -246,23 +246,15 @@ def transcribe_long(
     logger.info("loading vad model")
     vad_model = GenericFunASR(vad_model_dir, max_single_segment_time=SPEECH_LENGTH*1000, device="cpu")
 
+    # convert audio to sample rate 16k Mono channel audio
+    tmp_audio = f"{audio}.wav"
+    convert_audio(audio, tmp_audio)
+
     logger.info("run vad model")
     segments = vad_model(input=tmp_audio, disable_pbar=True)[0]["value"]
 
-    logger.info("loading asr model")
-    model_kwargs = {
-        "device": device,
-        "normalize_length": kwargs.get("normalize_length", False),
-        "beam_size": kwargs.get("beam_size", 5),
-        "maxlenratio": kwargs.get("maxlenratio", 0.0),
-    }
-
-    model = load_model(model, model_dir, **model_kwargs)
-
-    results = []
     logger.info("decoding...")
     audio_segment = pydub.AudioSegment.from_wav(tmp_audio)
-
     for seg in segments:
         s, e = seg
         raw_data = audio_segment[s:e].raw_data
@@ -271,71 +263,60 @@ def transcribe_long(
             speech=waveform,
             lang_sym=lang_sym,
             region_sym=region_sym,
-            predict_time=kwargs.get("predict_time", True),
-            padding_speech=kwargs.get("padding_speech", False)
+            predict_time=predict_time,
+            padding_speech=padding_speech,
         )
 
         st = seconds_to_hms(s/1000)
         et = seconds_to_hms(e/1000)
         logger.info(f"segment: {st} - {et}, lang: {result.language}, region: {result.region}, text: {result.text_nospecial}")
-        results.append(result)
+        result_json = dataclasses.asdict(result)
+        result_json.update({
+            "start": round(s/1000, 2),
+            "end": round(e/100, 2)
+        })
+        segment_result = TranscribeSegmentResult(**result_json)
+        results.append(segment_result)
 
     # clean tmp audio file
     Path(tmp_audio).unlink(missing_ok=True)
 
-    return result
+    return results
 
 
 def transcribe(
+        model: DolphinSpeech2Text,
         audio: str,
-        device: str,
-        model: str,
-        model_dir: str,
-        lang_sym: str,
-        region_sym: str,
+        lang_sym: str = None,
+        region_sym: str = None,
+        predict_time: bool = True,
+        padding_speech: bool = False,
         **kwargs,
     ) -> TranscribeResult:
     """
     Transcribe audio to text.
 
     Args:
+        model: model instance
         audio: audio path
-        device: inference device, (e.g. cpu, cuda, mps)
-        model: model name (e.g. small)
-        model_dir: model download directory
         lang_sym: language symbol (e.g. zh)
         region_sym: regiion symbol (e.g. CN)
+        predict_time: whether predict timestamp (default: true)
+        padding_speech: whether padding speech to 30 seconds (default: false)
 
     Returns:
         TranscribeResult
     """
-    if model not in MODELS:
-        logging.error(f"Unknown model {model}, Dolphin open source base, small model, please config the correct model.")
-        return
-
-    validate_lang_region(lang_sym, region_sym)
-
-    model_dir = model_dir if model_dir else os.path.expanduser("~/.cache/dolphin")
-    model_dir = Path(model_dir)
-
-    logger.info("loading asr model")
-    model_kwargs = {
-        "device": device,
-        "normalize_length": kwargs.get("normalize_length", False),
-        "beam_size": kwargs.get("beam_size", 5),
-        "maxlenratio": kwargs.get("maxlenratio", 0.0),
-    }
-
-    model = load_model(model, model_dir, **model_kwargs)
     waveform = load_audio(audio)
+    validate_lang_region(lang_sym, region_sym)
 
     logger.info("decoding...")
     result = model(
         speech=waveform,
         lang_sym=lang_sym,
         region_sym=region_sym,
-        predict_time=kwargs.get("predict_time", True),
-        padding_speech=kwargs.get("padding_speech", False)
+        predict_time=predict_time,
+        padding_speech=padding_speech
     )
 
     logger.info(f"decode result, rtf: {result.rtf}, language: {result.language}, region: {result.region}, text: {result.text}")
@@ -353,9 +334,35 @@ def cli():
 
     args = parser_args()
 
+    model = args.model
+    if model not in MODELS:
+        logging.error(f"Unknown model {model}, Dolphin open source base, small model, please config the correct model.")
+        return
+
+    model_dir = args.model_dir if args.model_dir else os.path.expanduser("~/.cache/dolphin")
+    model_dir = Path(model_dir)
+
+    logger.info("loading asr model")
+    device = args.device if args.device else detect_device()
+    model_kwargs = {
+        "device": device,
+        "normalize_length": args.normalize_length,
+        "beam_size": args.beam_size,
+        "maxlenratio": args.maxlenratio,
+    }
+    model_instance = load_model(model, model_dir, **model_kwargs)
+
     audio_duration = pydub.AudioSegment.from_file(args.audio).duration_seconds
     transcribe_fn = transcribe_long if audio_duration > SPEECH_LENGTH else transcribe
-    transcribe_fn(**vars(args))
+    transcribe_params = {
+        "model": model_instance,
+        "audio": args.audio,
+        "lang_sym": args.lang_sym,
+        "region_sym": args.region_sym,
+        "predict_time": args.predict_time,
+        "padding_speech": args.padding_speech,
+    }
+    transcribe_fn(**transcribe_params)
 
 
 if __name__ == "__main__":
