@@ -1,5 +1,9 @@
 # encoding: utf8
 
+import logging
+LOGGING_FORMAT="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
+logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
+
 import yaml
 import tqdm
 import pydub
@@ -102,6 +106,18 @@ def detect_device():
         device = "cpu"
 
     return device
+
+
+def seconds_to_hms(total_seconds: int):
+    total_seconds = int(total_seconds)
+    hours = total_seconds // 3600
+    remaining_seconds = total_seconds % 3600
+    minutes = remaining_seconds // 60
+    seconds = remaining_seconds % 60
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    else:
+        return f"{minutes:02d}:{seconds:02d}"
 
 
 def load_model(
@@ -219,16 +235,21 @@ def transcribe_long(
     model_dir = model_dir if model_dir else os.path.expanduser("~/.cache/dolphin")
     model_dir = Path(model_dir)
 
-    logging.info("download vad model...")
+    tmp_audio = f"{audio}.wav"
+    convert_audio(audio, tmp_audio)
+
+    logging.info("download vad model")
     vad_model_dir = Path(os.path.expanduser("~/.cache/dolphin/speech_fsmn_vad"))
     vad_model_dir.mkdir(exist_ok=True)
     _download_from_modelscope(VAD_MODEL, vad_model_dir, None)
 
-    logging.info("loading ")
+    logger.info("loading vad model")
     vad_model = GenericFunASR(vad_model_dir, max_single_segment_time=SPEECH_LENGTH*1000, device="cpu")
-    segments = vad_model(input=audio, disable_pbar=True)[0]["value"]
 
-    logger.info("loading model...")
+    logger.info("run vad model")
+    segments = vad_model(input=tmp_audio, disable_pbar=True)[0]["value"]
+
+    logger.info("loading asr model")
     model_kwargs = {
         "device": device,
         "normalize_length": kwargs.get("normalize_length", False),
@@ -239,9 +260,7 @@ def transcribe_long(
     model = load_model(model, model_dir, **model_kwargs)
 
     results = []
-    logger.info("inference...")
-    tmp_audio = f"{audio}.wav"
-    convert_audio(audio, tmp_audio)
+    logger.info("decoding...")
     audio_segment = pydub.AudioSegment.from_wav(tmp_audio)
 
     for seg in segments:
@@ -256,8 +275,8 @@ def transcribe_long(
             padding_speech=kwargs.get("padding_speech", False)
         )
 
-        st = round(s / 1000, 2)
-        et = round(e / 1000, 2)
+        st = seconds_to_hms(s/1000)
+        et = seconds_to_hms(e/1000)
         logger.info(f"segment: {st} - {et}, lang: {result.language}, region: {result.region}, text: {result.text_nospecial}")
         results.append(result)
 
@@ -299,7 +318,7 @@ def transcribe(
     model_dir = model_dir if model_dir else os.path.expanduser("~/.cache/dolphin")
     model_dir = Path(model_dir)
 
-    logger.info("loading model...")
+    logger.info("loading asr model")
     model_kwargs = {
         "device": device,
         "normalize_length": kwargs.get("normalize_length", False),
@@ -310,7 +329,7 @@ def transcribe(
     model = load_model(model, model_dir, **model_kwargs)
     waveform = load_audio(audio)
 
-    logger.info("inference...")
+    logger.info("decoding...")
     result = model(
         speech=waveform,
         lang_sym=lang_sym,
@@ -326,9 +345,6 @@ def transcribe(
 def cli():
     import warnings
     warnings.filterwarnings("ignore", category=FutureWarning)
-
-    LOGGING_FORMAT="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
-    logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
 
     # filter framework interanl logs
     logging.getLogger("espnet").setLevel(logging.ERROR)
