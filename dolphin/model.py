@@ -44,6 +44,17 @@ class TranscribeResult:
     rtf: float
 
 
+@dataclasses.dataclass
+class TranscribeSegmentResult:
+    text: str
+    text_nospecial: str
+    language: str
+    region: str
+    rtf: float
+    start: float
+    end: float
+
+
 class DolphinSpeech2Text(Speech2Text):
 
     @typechecked
