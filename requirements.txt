@@ -1,2 +1,4 @@
 espnet==202402
 modelscope
+addict==2.4.0
+pydub
