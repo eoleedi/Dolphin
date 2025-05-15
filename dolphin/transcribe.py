@@ -273,7 +273,7 @@ def transcribe_long(
         result_json = dataclasses.asdict(result)
         result_json.update({
             "start": round(s/1000, 2),
-            "end": round(e/100, 2)
+            "end": round(e/1000, 2)
         })
         segment_result = TranscribeSegmentResult(**result_json)
         results.append(segment_result)
