@@ -82,7 +82,8 @@ class DolphinSpeech2Text(Speech2Text):
         quantize_modules: List[str] = ["Linear"],
         quantize_dtype: str = "qint8",
         task_sym: str = "<asr>",
-        predict_time: bool = True
+        predict_time: bool = True,
+        **kwargs,
     ):
 
         qconfig_spec = set([getattr(torch.nn, q) for q in quantize_modules])

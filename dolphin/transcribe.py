@@ -100,6 +100,7 @@ def parser_args() -> Namespace:
     parser.add_argument("--predict_time", type=str2bool, default=True, help="whether predict timestamp (default: true)")
     parser.add_argument("--beam_size", type=int, default=5, help="number of beams in beam search (default: 5)")
     parser.add_argument("--maxlenratio", type=float, default=0.0, help="Input length ratio to obtain max output length (default: 0.0)")
+    parser.add_argument("--disable_model_hash_check", action="store_true", help="Disable model checkpoint hash check")
 
     args = parser.parse_args()
     return args
@@ -161,7 +162,8 @@ def load_model(
 
     model_file = model_dir / f"{model_name}.pt"
     download_model = True
-    if model_file.exists():
+    disable_model_hash_check = kwargs.get("disable_model_hash_check", False)
+    if model_file.exists() and not disable_model_hash_check:
         with open(model_file, "rb") as f:
             model_bytes = f.read()
         if hashlib.sha256(model_bytes).hexdigest() == MODELS[model_name]["sha256"]:
@@ -170,7 +172,7 @@ def load_model(
             model_file.unlink(missing_ok=True)
             logger.warning("model SHA256 chechsum mismatch, redownload model...")
 
-    if download_model:
+    if download_model and not disable_model_hash_check:
         # Download model
         model_dir.mkdir(exist_ok=True)
         _download_from_modelscope(
@@ -341,6 +343,7 @@ def cli():
         "normalize_length": args.normalize_length,
         "beam_size": args.beam_size,
         "maxlenratio": args.maxlenratio,
+        "disable_model_hash_check": args.disable_model_hash_check,
     }
     model_instance = load_model(model, model_dir, **model_kwargs)
 
