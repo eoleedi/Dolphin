@@ -6,12 +6,14 @@ import yaml
 import logging
 import dataclasses
 import argparse
+import functools
 from pathlib import Path
 from os.path import join, dirname, abspath
 from typing import Union, Optional, List, Tuple, Dict
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from typeguard import typechecked
 from espnet2.tasks.lm import LMTask
@@ -27,6 +29,7 @@ from espnet2.bin.s2t_inference import Speech2Text, ListOfHypothesis
 from dolphin.scorefilter import DolphinScoreFilter
 from dolphin.beam_search import SimpleBeamSearch
 from espnet.nets.beam_search import BeamSearch, Hypothesis
+from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 
 from .constants import (SPEECH_LENGTH, SAMPLE_RATE, FIRST_TIME_SYMBOL, LAST_TIME_SYMBOL, NOTIME_SYMBOL,
                         FIRST_LANG_SYMBOL, LAST_LANG_SYMBOL, FIRST_REGION_SYMBOL, LAST_REGION_SYMBOL)
@@ -239,6 +242,36 @@ class DolphinSpeech2Text(Speech2Text):
 
         return model, args
 
+    def install_kv_cache(self, module: nn.Module):
+        def kv_linear_forward_fn(ins: nn.Linear, input: torch.Tensor) -> torch.Tensor:
+            if hasattr(ins, "kv_cache") and ins.kv_cache.size() == input.size():
+                return ins.kv_cache
+
+            output = F.linear(input, ins.weight, ins.bias)
+            if hasattr(ins, "kv_cache"):
+                del ins.kv_cache
+            ins.register_buffer("kv_cache", output)
+            return output
+
+        def rewrite_cross_attn_forward(module_name: str, module: nn.Module):
+            if module_name == "src_attn":
+                module.linear_k.forward = functools.partial(kv_linear_forward_fn, module.linear_k)
+                module.linear_v.forward = functools.partial(kv_linear_forward_fn, module.linear_v)
+
+        def module_apply_with_name(module: nn.Module, fn: callable, name: str = None):
+            fn(name, module)
+            for name, m in module.named_children():
+                module_apply_with_name(m, fn, name)
+
+        module_apply_with_name(module, rewrite_cross_attn_forward)
+
+    def clean_cache(self, module: nn.Module):
+        def clean_kv_cache(module: nn.Module):
+            if hasattr(module, "kv_cache"):
+                del module.kv_cache
+
+        module.apply(clean_kv_cache)
+
     def detect_language(self, speech: torch.Tensor, lang_sym: str = None, with_enc_output: bool = False, **kwargs) -> Tuple[int, int]:
         """
         Detect language and region.
@@ -397,13 +430,18 @@ class DolphinSpeech2Text(Speech2Text):
 
         assert len(enc) == 1, len(enc)
 
-        # c. Pass the encoder result to the beam search
-        results = self._decode_single_sample(enc[0])
-        text, _, _, text_nospecial, _ = results[0]
-        decode_tm = time.monotonic()
-        logger.debug(f"decode time: {round(decode_tm - encode_tm, 2)} senconds")
-        rtf = round((decode_tm - start_tm) / (nsamples / SAMPLE_RATE), 2)
+        try:
+            self.install_kv_cache(self.s2t_model.decoder)
 
-        lang, region = self.converter.ids2tokens([lang_id, region_id])
-        ret = TranscribeResult(text, text_nospecial, lang[1:-1], region[1:-1], rtf=rtf)
-        return ret
+            # c. Pass the encoder result to the beam search
+            results = self._decode_single_sample(enc[0])
+            text, _, _, text_nospecial, _ = results[0]
+            decode_tm = time.monotonic()
+            logger.debug(f"decode time: {round(decode_tm - encode_tm, 2)} senconds")
+            rtf = round((decode_tm - start_tm) / (nsamples / SAMPLE_RATE), 2)
+
+            lang, region = self.converter.ids2tokens([lang_id, region_id])
+            ret = TranscribeResult(text, text_nospecial, lang[1:-1], region[1:-1], rtf=rtf)
+            return ret
+        finally:
+            self.clean_cache(self.s2t_model.decoder)
