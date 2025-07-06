@@ -1,4 +1,4 @@
-espnet==202402
+espnet
 modelscope
 addict==2.4.0
 pydub
